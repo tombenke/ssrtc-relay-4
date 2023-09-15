@@ -1,0 +1,60 @@
+version: '3'
+
+vars:
+  APPNAME: ssrtc-relay-4
+  PLATFORM: esp8266:esp8266:nodemcu
+  SERIAL_PORT: /dev/ttyUSB0
+  BAUD_RATE: 9600
+  WIFI_AP_SSID: KERT_1
+  #WIFI_AP_SSID: KERT_2
+  # WIFI_AP_PASSWORD is defined in .secrets file, that is ignored by git
+  VERSION: 1.0.0
+  #VERSION:
+  #  sh: git describe --tags --always --match v* ${GITHUB_REF} || echo "latest"
+  CONFIG_H: config.h
+
+dotenv:
+  - .secrets
+
+tasks:
+
+  default:
+    desc: "The default task: compile and upload"
+    cmds:
+      - task: compile
+      - task: upload
+
+  pre-compile:
+    desc: Create a temporary header file with hidden parameters, since -D flag does not work properly for arduino-cli
+    cmds:
+      - echo "#define BAUD_RATE {{.BAUD_RATE}}" > {{.CONFIG_H}}
+      - echo "#define APSSID \"{{.WIFI_AP_SSID}}\"" >> {{.CONFIG_H}}
+      - echo "#define APPSK \"{{.WIFI_AP_PASSWORD}}\"" >> {{.CONFIG_H}}
+
+  post-compile:
+    desc: Remove temporary files needed for compilation
+    cmds:
+      - rm {{.CONFIG_H}}
+
+  compile:
+    desc: Build the binary to upload
+    cmds:
+      - task: pre-compile
+      - arduino-cli compile --clean --fqbn {{.PLATFORM}} .
+        #      - |
+        #        arduino-cli compile --clean --fqbn {{.PLATFORM}} \
+        #          --build-property 'compiler.cpp.extra_flags="-DBAUD_RATE={{.BAUD_RATE}}"' \
+        #          --build-property 'compiler.cpp.extra_flags="-DAPSSID=\"{{.WIFI_AP_SSID}}\""' \
+        #          --build-property 'compiler.cpp.extra_flags="-DAPPSK=\"{{.WIFI_AP_PASSWORD}}\""' \
+        #          .
+      - task: post-compile
+
+  upload:
+    desc: Upload the compiled binary to the device
+    cmds:
+      - arduino-cli upload -p {{.SERIAL_PORT}} --fqbn {{.PLATFORM}} .
+
+  start-serial:
+    desc: Start the serial console
+    cmds:
+      - minicom -b {{.BAUD_RATE}} -D {{.SERIAL_PORT}}
